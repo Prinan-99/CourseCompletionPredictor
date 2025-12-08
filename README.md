@@ -73,12 +73,10 @@ Shows risk indicators — useful for early intervention.
 
 ---
 
-## 🤝 Contributing
+<img width="1314" height="818" alt="image" src="https://github.com/user-attachments/assets/81c73057-9a74-4105-85a5-091aaeff07d2" />
+<img width="1235" height="651" alt="image" src="https://github.com/user-attachments/assets/f5bfea56-d146-496b-80d1-7f178317ace2" />
+<img width="1091" height="894" alt="image" src="https://github.com/user-attachments/assets/d3208676-a872-4acb-8ac8-1c9daace38a1" />
 
-Pull requests are welcome.  
-For major changes, open an issue first to discuss what you want to modify.
 
----
 
-## 📜 License
-This project is released under the **MIT License**.
+
