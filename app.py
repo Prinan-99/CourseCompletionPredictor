@@ -1,101 +1,130 @@
 import streamlit as st
 import pandas as pd
 import joblib
-import numpy as np
 
-# ============================
-# LOAD SCALER AND MODEL
-# ============================
-scaler = joblib.load("scaler.pkl")
+
 model = joblib.load("xgb_model.pkl")
+scaler = joblib.load("scaler.pkl")
+selected_features = joblib.load("selected_features.pkl")
+label_encoder = joblib.load("label_encoder.pkl")
+course_default_map = joblib.load("course_default_map.pkl")
+course_names = joblib.load("course_names.pkl")
 
-# FINAL SELECTED FEATURES
-selected_features = [
-    'Login_Frequency',
-    'Time_Spent_Hours',
-    'Assignments_Submitted',
-    'Assignments_Missed',
-    'Progress_Percentage',
-    'Gender_Male',
-    'Education_Level_Master',
-    'Employment_Status_Student',
-    'Internet_Connection_Quality_Medium',
-    'Category_Programming'
-]
+st.title("🎓 Course Completion Predictor")
 
-st.title("🎓 Course Completion Prediction App")
 
-st.write("Enter the student details below to predict whether they will complete the course.")
+student_name = st.text_input("Student Name ")
 
-# ============================
-# USER INPUTS
-# ============================
 
-# Numeric inputs
-Login_Frequency = st.slider("Login Frequency", 0, 50, 10)
-Time_Spent_Hours = st.slider("Time Spent (Hours)", 0, 200, 20)
-Assignments_Submitted = st.slider("Assignments Submitted", 0, 20, 5)
-Assignments_Missed = st.slider("Assignments Missed", 0, 20, 1)
-Progress_Percentage = st.slider("Progress Percentage (%)", 0, 100, 50)
-
-# Binary categorical (already converted to 0/1 in training)
-Gender_Male = st.selectbox("Gender", ["Female", "Male"])
-Gender_Male = 1 if Gender_Male == "Male" else 0
-
-Education_Level_Master = st.selectbox(
-    "Education Level (Master?)",
-    ["No", "Yes"]
+selected_course = st.selectbox(
+    "Select Course",
+    course_names,
+    placeholder="Search course..."
 )
-Education_Level_Master = 1 if Education_Level_Master == "Yes" else 0
 
-Employment_Status_Student = st.selectbox(
-    "Employment Status (Student?)",
-    ["No", "Yes"]
-)
-Employment_Status_Student = 1 if Employment_Status_Student == "Yes" else 0
+if not selected_course:
+    st.stop()
 
-Internet_Connection_Quality_Medium = st.selectbox(
-    "Internet Quality Medium?",
-    ["No", "Yes"]
-)
-Internet_Connection_Quality_Medium = 1 if Internet_Connection_Quality_Medium == "Yes" else 0
+st.write("---")
 
-Category_Programming = st.selectbox(
-    "Course Category = Programming?",
-    ["No", "Yes"]
-)
-Category_Programming = 1 if Category_Programming == "Yes" else 0
 
-# ============================
-# CREATE INPUT DATAFRAME
-# ============================
+st.subheader("📘 Course Details")
 
-input_data = pd.DataFrame([[
-    Login_Frequency,
-    Time_Spent_Hours,
-    Assignments_Submitted,
-    Assignments_Missed,
-    Progress_Percentage,
-    Gender_Male,
-    Education_Level_Master,
-    Employment_Status_Student,
-    Internet_Connection_Quality_Medium,
-    Category_Programming
-]], columns=selected_features)
+course_info = course_default_map[selected_course]
 
-# ============================
-# SCALE FEATURES
-# ============================
-scaled_input = scaler.transform(input_data)
+for col, val in course_info.items():
+    st.text(f"{col}: {val}")
 
-# ============================
-# PREDICT
-# ============================
-if st.button("Predict"):
-    prediction = model.predict(scaled_input)[0]
+st.write("---")
 
-    st.subheader("🔮 Prediction Result")
-    if prediction == 1:
-        st.success("✔ The student is likely to COMPLETE the course.")
+
+st.subheader("🧍 Student Inputs (Manual Entry)")
+
+student_inputs = {}
+
+for feature in selected_features:
+
+    # Skip course-level features (auto imported)
+    if feature in course_info:
+        continue
+
+    # Conditional visibility (example)
+    if feature == "Discount_Used" and student_inputs.get("Fees_Paid") != 1:
+        continue
+
+    # Detect numeric features
+    if any(key in feature.lower() for key in [
+        "age", "duration", "frequency", "hours", "score",
+        "percentage", "submitted", "missed", "rating", "count",
+        "rate", "login"
+    ]):
+        # Default slider ranges
+        min_val = 0
+        max_val = 200
+        default_val = 0
+
+        # Special ranges
+        if "age" in feature.lower():
+            min_val, max_val, default_val = 15, 60, 20
+
+        elif "rating" in feature.lower():
+            min_val, max_val, default_val = 0, 5, 3
+
+        elif "percentage" in feature.lower() or "rate" in feature.lower():
+            min_val, max_val, default_val = 0, 100, 50
+
+        student_inputs[feature] = st.slider(
+            feature,
+            min_value=float(min_val),
+            max_value=float(max_val),
+            value=float(default_val)
+        )
+
+    # Categorical Yes/No → convert to 0/1
     else:
-        st.error("✘ The student is likely to DROP OUT.")
+        choice = st.selectbox(feature, ["Yes", "No"])
+        student_inputs[feature] = 1 if choice == "Yes" else 0
+
+st.write("---")
+
+
+final_input = {}
+
+# Add course-level features
+for f in selected_features:
+    if f in course_info:
+        val = course_info[f]
+        # If course fields contain Yes/No convert
+        if isinstance(val, str) and val in ["Yes", "No"]:
+            val = 1 if val == "Yes" else 0
+        final_input[f] = val
+
+# Add student inputs
+for f, v in student_inputs.items():
+    final_input[f] = v
+
+for col in selected_features:
+    if col not in final_input:
+        final_input[col] = 0  # missing dummy column → set to 0
+
+# Convert to DataFrame
+input_df = pd.DataFrame([final_input])
+
+
+num_cols = input_df.select_dtypes(include=["int64", "float64"]).columns
+input_df[num_cols] = scaler.transform(input_df[num_cols])
+
+
+if st.button("Predict Completion"):
+    pred = model.predict(input_df)[0]
+    result = label_encoder.inverse_transform([pred])[0]
+
+    if result == "Completed":
+        msg = "✅ Completed"
+    else:
+        msg = "❌ Not Completed"
+
+    if student_name.strip():
+        st.success(f"🎯 Prediction for **{student_name}**: {msg}")
+    else:
+        st.success(f"🎯 Course Completion Prediction: {msg}")
